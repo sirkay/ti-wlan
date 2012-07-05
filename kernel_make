@@ -1,0 +1,1 @@
+make ARCH=arm CROSS_COMPILE=/root/arm-2010q1/bin/arm-none-eabi- $1
