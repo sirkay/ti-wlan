@@ -487,6 +487,8 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 					   gpu_freq) : 0;
 		pwr->pwrlevels[i].bus_freq =
 			pdata_pwr->pwrlevel[i].bus_freq;
+		pwr->pwrlevels[i].io_fraction =
+			pdata_pwr->pwrlevel[i].io_fraction;
 	}
 	/* Do not set_rate for targets in sync with AXI */
 	if (pwr->pwrlevels[0].gpu_freq > 0)
@@ -668,6 +670,7 @@ int kgsl_pwrctrl_sleep(struct kgsl_device *device)
 sleep:
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_OFF);
+
 	if (pwr->pwrlevels[0].gpu_freq > 0)
 		clk_set_rate(pwr->grp_clks[0],
 				pwr->pwrlevels[pwr->num_pwrlevels - 1].

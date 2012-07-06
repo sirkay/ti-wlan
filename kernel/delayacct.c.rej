@@ -1,0 +1,11 @@
+--- kernel/delayacct.c	2009-12-03 21:40:09.000000000 +1100
++++ kernel/delayacct.c	2010-12-16 16:07:44.252620749 +1100
+@@ -128,7 +128,7 @@
+ 	 */
+ 	t1 = tsk->sched_info.pcount;
+ 	t2 = tsk->sched_info.run_delay;
+-	t3 = tsk->se.sum_exec_runtime;
++	t3 = tsk_seruntime(tsk);
+ 
+ 	d->cpu_count += t1;
+ 

@@ -17,7 +17,6 @@
 #include <linux/types.h>
 #include <linux/list.h>
 #include <asm/setup.h>
-#include <mach/board.h>
 
 struct msm_pmem_setting{
 	resource_size_t pmem_start;
@@ -33,16 +32,6 @@ struct msm_pmem_setting{
 	resource_size_t ram_console_start;
 	resource_size_t ram_console_size;
 };
-
-#if defined(CONFIG_ARCH_MSM8X60)
-struct msm_mem_settings {
-	/* key attributes for identifying the setting. */
-	unsigned mem_size_mb;
-
-	/* native meminfo data structure */
-	struct meminfo mem_info;
-};
-#endif
 
 enum {
 	MSM_SERIAL_UART1	= 0,

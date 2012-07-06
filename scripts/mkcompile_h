@@ -43,7 +43,7 @@ else
 	TIMESTAMP=$KBUILD_BUILD_TIMESTAMP
 fi
 
-UTS_VERSION="#$VERSION"
+UTS_VERSION="Build_#$VERSION.0.1-AOKP"
 CONFIG_FLAGS=""
 if [ -n "$SMP" ] ; then CONFIG_FLAGS="SMP"; fi
 if [ -n "$PREEMPT" ] ; then CONFIG_FLAGS="$CONFIG_FLAGS PREEMPT"; fi
@@ -66,7 +66,7 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
   if [ -z "$KBUILD_BUILD_TIMESTAMP" ]; then
 	echo \#define LINUX_COMPILE_TIME \"`date +%T`\"
 	echo \#define LINUX_COMPILE_BY \"sirkay\"
-	echo \#define LINUX_COMPILE_HOST \"XRay\"
+	echo \#define LINUX_COMPILE_HOST \"xda\"
   else
 	echo \#define LINUX_COMPILE_TIME \"`date --date="$TIMESTAMP" +%R:%S`\"
 	echo \#define LINUX_COMPILE_BY \"BuildUser\"

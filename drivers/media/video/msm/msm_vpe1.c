@@ -1058,8 +1058,7 @@ static irqreturn_t vpe_parse_irq(int irq_num, void *data)
 		qcmd = kzalloc(sizeof(struct vpe_isr_queue_cmd_type),
 			GFP_ATOMIC);
 		if (!qcmd) {
-//			CDBG("vpe_parse_irq: qcmd malloc failed!\n");
-			pr_err("[CAM] vpe_parse_irq: qcmd malloc failed!\n");
+			CDBG("vpe_parse_irq: qcmd malloc failed!\n");
 			return IRQ_HANDLED;
 		}
 		/* must be 0x1 now. so in bottom half we don't really
@@ -1116,16 +1115,14 @@ int msm_vpe_release(void)
 	/* don't change the order of clock and irq.*/
 	int rc = 0;
 
-//	CDBG("%s: In \n", __func__);
-	pr_info("[CAM] %s: In\n", __func__);
+	CDBG("%s: In \n", __func__);
 
 	free_irq(vpe_device->vpeirq, 0);
 	rc = msm_camio_vpe_clk_disable();
 	kfree(vpe_ctrl);
 
-//	CDBG("%s: Out \n", __func__);
-	pr_info("[CAM] %s: Out\n", __func__);
-	return 0;
+	CDBG("%s: Out \n", __func__);
+	return rc;
 }
 
 static int __msm_vpe_probe(struct platform_device *pdev)
