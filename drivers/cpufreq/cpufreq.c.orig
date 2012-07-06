@@ -1506,6 +1506,12 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 		target_freq, relation);
 	if (cpu_online(policy->cpu) && cpufreq_driver->target)
 		retval = cpufreq_driver->target(policy, target_freq, relation);
+	if (likely(retval != -EINVAL)) {
+		if (target_freq == policy->max)
+			cpu_nonscaling(policy->cpu);
+		else
+			cpu_scaling(policy->cpu);
+	}
 
 	return retval;
 }
@@ -1742,17 +1748,8 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 			dprintk("governor switch\n");
 
 			/* end old governor */
-			if (data->governor) {
-				/*
-				 * Need to release the rwsem around governor
-				 * stop due to lock dependency between
-				 * cancel_delayed_work_sync and the read lock
-				 * taken in the delayed work handler.
-				 */
-				unlock_policy_rwsem_write(data->cpu);
+			if (data->governor)
 				__cpufreq_governor(data, CPUFREQ_GOV_STOP);
-				lock_policy_rwsem_write(data->cpu);
-			}
 
 			/* start new governor */
 			data->governor = policy->governor;

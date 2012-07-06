@@ -441,7 +441,7 @@ config HAVE_UNSTABLE_SCHED_CLOCK
 
 config GROUP_SCHED
 	bool "Group CPU scheduler"
-	depends on EXPERIMENTAL && !SCHED_BFS
+	depends on EXPERIMENTAL && CGROUPS && !SCHED_BFS
 	default n
 	help
 	  This feature lets CPU scheduler recognize task groups and control CPU

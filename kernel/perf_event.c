@@ -69,7 +69,8 @@ static inline bool perf_paranoid_kernel(void)
 	return sysctl_perf_event_paranoid > 1;
 }
 
-int sysctl_perf_event_mlock __read_mostly = 512; /* 'free' kb per user */
+/* Minimum for 128 pages + 1 for the user control page */
+int sysctl_perf_event_mlock __read_mostly = 516; /* 'free' kb per user */
 
 /*
  * max perf event sample rate
@@ -3800,6 +3801,8 @@ static void perf_swevent_add(struct perf_event *event, u64 nr,
 
 static int perf_swevent_is_counting(struct perf_event *event)
 {
+	if (event->hw.state & PERF_HES_STOPPED)
+		return 0;
 	/*
 	 * The event is active, we're good!
 	 */
@@ -4167,6 +4170,8 @@ static void tp_perf_event_destroy(struct perf_event *event)
 
 static const struct pmu *tp_perf_event_init(struct perf_event *event)
 {
+	if (event->hw.state & PERF_HES_STOPPED)
+		return 0;
 	/*
 	 * Raw tracepoint data is a severe data leak, only allow root to
 	 * have these.

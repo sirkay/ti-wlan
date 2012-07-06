@@ -400,10 +400,15 @@ static inline int scsi_host_is_busy(struct Scsi_Host *shost)
 static void scsi_run_queue(struct request_queue *q)
 {
 	struct scsi_device *sdev = q->queuedata;
-	struct Scsi_Host *shost = sdev->host;
+	struct Scsi_Host *shost;
 	LIST_HEAD(starved_list);
 	unsigned long flags;
 
+	/* if the device is dead, sdev will be NULL, so no queue to run */
+	if (!sdev)
+		return;
+
+	shost = sdev->host;
 	if (scsi_target(sdev)->single_lun)
 		scsi_single_lun_run(sdev);
 
@@ -1636,9 +1641,8 @@ struct request_queue *__scsi_alloc_queue(struct Scsi_Host *shost,
 
 	blk_queue_max_segment_size(q, dma_get_max_seg_size(dev));
 
-	/* New queue, no concurrency on queue_flags */
 	if (!shost->use_clustering)
-		queue_flag_clear_unlocked(QUEUE_FLAG_CLUSTER, q);
+		q->limits.cluster = 0;
 
 	/*
 	 * set a reasonable default alignment on word boundaries: the
