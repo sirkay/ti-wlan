@@ -339,18 +339,11 @@ static u32 group2_table[] = {
 };
 
 /* EFLAGS bit definitions. */
-#define EFLG_ID (1<<21)
-#define EFLG_VIP (1<<20)
-#define EFLG_VIF (1<<19)
-#define EFLG_AC (1<<18)
 #define EFLG_VM (1<<17)
 #define EFLG_RF (1<<16)
-#define EFLG_IOPL (3<<12)
-#define EFLG_NT (1<<14)
 #define EFLG_OF (1<<11)
 #define EFLG_DF (1<<10)
 #define EFLG_IF (1<<9)
-#define EFLG_TF (1<<8)
 #define EFLG_SF (1<<7)
 #define EFLG_ZF (1<<6)
 #define EFLG_AF (1<<4)
@@ -619,7 +612,7 @@ static int do_fetch_insn_byte(struct x86_emulate_ctxt *ctxt,
 
 	if (linear < fc->start || linear >= fc->end) {
 		size = min(15UL, PAGE_SIZE - offset_in_page(linear));
-		rc = ops->fetch(linear, fc->data, size, ctxt->vcpu, NULL);
+		rc = ops->read_std(linear, fc->data, size, ctxt->vcpu);
 		if (rc)
 			return rc;
 		fc->start = linear;
@@ -674,11 +667,11 @@ static int read_descriptor(struct x86_emulate_ctxt *ctxt,
 		op_bytes = 3;
 	*address = 0;
 	rc = ops->read_std((unsigned long)ptr, (unsigned long *)size, 2,
-			   ctxt->vcpu, NULL);
+			   ctxt->vcpu);
 	if (rc)
 		return rc;
 	rc = ops->read_std((unsigned long)ptr + 2, address, op_bytes,
-			   ctxt->vcpu, NULL);
+			   ctxt->vcpu);
 	return rc;
 }
 
@@ -902,7 +895,6 @@ x86_decode_insn(struct x86_emulate_ctxt *ctxt, struct x86_emulate_ops *ops)
 
 	switch (mode) {
 	case X86EMUL_MODE_REAL:
-	case X86EMUL_MODE_VM86:
 	case X86EMUL_MODE_PROT16:
 		def_op_bytes = def_ad_bytes = 2;
 		break;
@@ -1212,49 +1204,6 @@ static int emulate_pop(struct x86_emulate_ctxt *ctxt,
 	return rc;
 }
 
-static int emulate_popf(struct x86_emulate_ctxt *ctxt,
-		       struct x86_emulate_ops *ops,
-		       void *dest, int len)
-{
-	int rc;
-	unsigned long val, change_mask;
-	int iopl = (ctxt->eflags & X86_EFLAGS_IOPL) >> IOPL_SHIFT;
-	int cpl = kvm_x86_ops->get_cpl(ctxt->vcpu);
-
-	rc = emulate_pop(ctxt, ops, &val, len);
-	if (rc != X86EMUL_CONTINUE)
-		return rc;
-
-	change_mask = EFLG_CF | EFLG_PF | EFLG_AF | EFLG_ZF | EFLG_SF | EFLG_OF
-		| EFLG_TF | EFLG_DF | EFLG_NT | EFLG_RF | EFLG_AC | EFLG_ID;
-
-	switch(ctxt->mode) {
-	case X86EMUL_MODE_PROT64:
-	case X86EMUL_MODE_PROT32:
-	case X86EMUL_MODE_PROT16:
-		if (cpl == 0)
-			change_mask |= EFLG_IOPL;
-		if (cpl <= iopl)
-			change_mask |= EFLG_IF;
-		break;
-	case X86EMUL_MODE_VM86:
-		if (iopl < 3) {
-			kvm_inject_gp(ctxt->vcpu, 0);
-			return X86EMUL_PROPAGATE_FAULT;
-		}
-		change_mask |= EFLG_IF;
-		break;
-	default: /* real mode */
-		change_mask |= (EFLG_IOPL | EFLG_IF);
-		break;
-	}
-
-	*(unsigned long *)dest =
-		(ctxt->eflags & ~change_mask) | (val & change_mask);
-
-	return rc;
-}
-
 static inline int emulate_grp1a(struct x86_emulate_ctxt *ctxt,
 				struct x86_emulate_ops *ops)
 {
@@ -1396,7 +1345,7 @@ static int emulate_ret_far(struct x86_emulate_ctxt *ctxt,
 	rc = emulate_pop(ctxt, ops, &cs, c->op_bytes);
 	if (rc)
 		return rc;
-	rc = kvm_load_segment_descriptor(ctxt->vcpu, (u16)cs, VCPU_SREG_CS);
+	rc = kvm_load_segment_descriptor(ctxt->vcpu, (u16)cs, 1, VCPU_SREG_CS);
 	return rc;
 }
 
@@ -1504,7 +1453,7 @@ emulate_syscall(struct x86_emulate_ctxt *ctxt)
 
 	/* syscall is not available in real mode */
 	if (c->lock_prefix || ctxt->mode == X86EMUL_MODE_REAL
-	    || ctxt->mode == X86EMUL_MODE_VM86)
+		|| !(ctxt->vcpu->arch.cr0 & X86_CR0_PE))
 		return -1;
 
 	setup_syscalls_segments(ctxt, &cs, &ss);
@@ -1556,8 +1505,9 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt)
 	if (c->lock_prefix)
 		return -1;
 
-	/* inject #GP if in real mode */
-	if (ctxt->mode == X86EMUL_MODE_REAL) {
+	/* inject #GP if in real mode or paging is disabled */
+	if (ctxt->mode == X86EMUL_MODE_REAL ||
+		!(ctxt->vcpu->arch.cr0 & X86_CR0_PE)) {
 		kvm_inject_gp(ctxt->vcpu, 0);
 		return -1;
 	}
@@ -1621,9 +1571,9 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
 	if (c->lock_prefix)
 		return -1;
 
-	/* inject #GP if in real mode or Virtual 8086 mode */
-	if (ctxt->mode == X86EMUL_MODE_REAL ||
-	    ctxt->mode == X86EMUL_MODE_VM86) {
+	/* inject #GP if in real mode or paging is disabled */
+	if (ctxt->mode == X86EMUL_MODE_REAL
+		|| !(ctxt->vcpu->arch.cr0 & X86_CR0_PE)) {
 		kvm_inject_gp(ctxt->vcpu, 0);
 		return -1;
 	}
@@ -1668,57 +1618,6 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
 	c->regs[VCPU_REGS_RSP] = ctxt->vcpu->arch.regs[VCPU_REGS_RCX];
 
 	return 0;
-}
-
-static bool emulator_bad_iopl(struct x86_emulate_ctxt *ctxt)
-{
-	int iopl;
-	if (ctxt->mode == X86EMUL_MODE_REAL)
-		return false;
-	if (ctxt->mode == X86EMUL_MODE_VM86)
-		return true;
-	iopl = (ctxt->eflags & X86_EFLAGS_IOPL) >> IOPL_SHIFT;
-	return kvm_x86_ops->get_cpl(ctxt->vcpu) > iopl;
-}
-
-static bool emulator_io_port_access_allowed(struct x86_emulate_ctxt *ctxt,
-					    struct x86_emulate_ops *ops,
-					    u16 port, u16 len)
-{
-	struct kvm_segment tr_seg;
-	int r;
-	u16 io_bitmap_ptr;
-	u8 perm, bit_idx = port & 0x7;
-	unsigned mask = (1 << len) - 1;
-
-	kvm_get_segment(ctxt->vcpu, &tr_seg, VCPU_SREG_TR);
-	if (tr_seg.unusable)
-		return false;
-	if (tr_seg.limit < 103)
-		return false;
-	r = ops->read_std(tr_seg.base + 102, &io_bitmap_ptr, 2, ctxt->vcpu,
-			  NULL);
-	if (r != X86EMUL_CONTINUE)
-		return false;
-	if (io_bitmap_ptr + port/8 > tr_seg.limit)
-		return false;
-	r = ops->read_std(tr_seg.base + io_bitmap_ptr + port/8, &perm, 1,
-			  ctxt->vcpu, NULL);
-	if (r != X86EMUL_CONTINUE)
-		return false;
-	if ((perm >> bit_idx) & mask)
-		return false;
-	return true;
-}
-
-static bool emulator_io_permited(struct x86_emulate_ctxt *ctxt,
-				 struct x86_emulate_ops *ops,
-				 u16 port, u16 len)
-{
-	if (emulator_bad_iopl(ctxt))
-		if (!emulator_io_port_access_allowed(ctxt, ops, port, len))
-			return false;
-	return true;
 }
 
 int
@@ -1880,12 +1779,7 @@ special_insn:
 		break;
 	case 0x6c:		/* insb */
 	case 0x6d:		/* insw/insd */
-		if (!emulator_io_permited(ctxt, ops, c->regs[VCPU_REGS_RDX],
-					  (c->d & ByteOp) ? 1 : c->op_bytes)) {
-			kvm_inject_gp(ctxt->vcpu, 0);
-			goto done;
-		}
-		if (kvm_emulate_pio_string(ctxt->vcpu, NULL,
+		 if (kvm_emulate_pio_string(ctxt->vcpu, NULL,
 				1,
 				(c->d & ByteOp) ? 1 : c->op_bytes,
 				c->rep_prefix ?
@@ -1901,11 +1795,6 @@ special_insn:
 		return 0;
 	case 0x6e:		/* outsb */
 	case 0x6f:		/* outsw/outsd */
-		if (!emulator_io_permited(ctxt, ops, c->regs[VCPU_REGS_RDX],
-					  (c->d & ByteOp) ? 1 : c->op_bytes)) {
-			kvm_inject_gp(ctxt->vcpu, 0);
-			goto done;
-		}
 		if (kvm_emulate_pio_string(ctxt->vcpu, NULL,
 				0,
 				(c->d & ByteOp) ? 1 : c->op_bytes,
@@ -1992,11 +1881,12 @@ special_insn:
 		break;
 	case 0x8e: { /* mov seg, r/m16 */
 		uint16_t sel;
+		int type_bits;
+		int err;
 
 		sel = c->src.val;
 
-		if (c->modrm_reg == VCPU_SREG_CS ||
-		    c->modrm_reg > VCPU_SREG_GS) {
+		if (c->modrm_reg == VCPU_SREG_CS) {
 			kvm_queue_exception(ctxt->vcpu, UD_VECTOR);
 			goto done;
 		}
@@ -2004,7 +1894,18 @@ special_insn:
 		if (c->modrm_reg == VCPU_SREG_SS)
 			toggle_interruptibility(ctxt, X86_SHADOW_INT_MOV_SS);
 
-		rc = kvm_load_segment_descriptor(ctxt->vcpu, sel, c->modrm_reg);
+		if (c->modrm_reg <= 5) {
+			type_bits = (c->modrm_reg == 1) ? 9 : 1;
+			err = kvm_load_segment_descriptor(ctxt->vcpu, sel,
+							  type_bits, c->modrm_reg);
+		} else {
+			printk(KERN_INFO "Invalid segreg in modrm byte 0x%02x\n",
+					c->modrm);
+			goto cannot_emulate;
+		}
+
+		if (err < 0)
+			goto cannot_emulate;
 
 		c->dst.type = OP_NONE;  /* Disable writeback. */
 		break;
@@ -2033,10 +1934,7 @@ special_insn:
 		c->dst.type = OP_REG;
 		c->dst.ptr = (unsigned long *) &ctxt->eflags;
 		c->dst.bytes = c->op_bytes;
-		rc = emulate_popf(ctxt, ops, &c->dst.val, c->op_bytes);
-		if (rc != X86EMUL_CONTINUE)
-			goto done;
-		break;
+		goto pop_instruction;
 	case 0xa0 ... 0xa1:	/* mov */
 		c->dst.ptr = (unsigned long *)&c->regs[VCPU_REGS_RAX];
 		c->dst.val = c->src.val;
@@ -2174,9 +2072,11 @@ special_insn:
 	case 0xe9: /* jmp rel */
 		goto jmp;
 	case 0xea: /* jmp far */
-		if (kvm_load_segment_descriptor(ctxt->vcpu, c->src2.val,
-						VCPU_SREG_CS))
-			goto done;
+		if (kvm_load_segment_descriptor(ctxt->vcpu, c->src2.val, 9,
+					VCPU_SREG_CS) < 0) {
+			DPRINTF("jmp far: Failed to load CS descriptor\n");
+			goto cannot_emulate;
+		}
 
 		c->eip = c->src.val;
 		break;
@@ -2194,13 +2094,7 @@ special_insn:
 	case 0xef: /* out (e/r)ax,dx */
 		port = c->regs[VCPU_REGS_RDX];
 		io_dir_in = 0;
-	do_io:
-		if (!emulator_io_permited(ctxt, ops, port,
-					  (c->d & ByteOp) ? 1 : c->op_bytes)) {
-			kvm_inject_gp(ctxt->vcpu, 0);
-			goto done;
-		}
-		if (kvm_emulate_pio(ctxt->vcpu, NULL, io_dir_in,
+	do_io:	if (kvm_emulate_pio(ctxt->vcpu, NULL, io_dir_in,
 				   (c->d & ByteOp) ? 1 : c->op_bytes,
 				   port) != 0) {
 			c->eip = saved_eip;
@@ -2225,21 +2119,13 @@ special_insn:
 		c->dst.type = OP_NONE;	/* Disable writeback. */
 		break;
 	case 0xfa: /* cli */
-		if (emulator_bad_iopl(ctxt))
-			kvm_inject_gp(ctxt->vcpu, 0);
-		else {
-			ctxt->eflags &= ~X86_EFLAGS_IF;
-			c->dst.type = OP_NONE;	/* Disable writeback. */
-		}
+		ctxt->eflags &= ~X86_EFLAGS_IF;
+		c->dst.type = OP_NONE;	/* Disable writeback. */
 		break;
 	case 0xfb: /* sti */
-		if (emulator_bad_iopl(ctxt))
-			kvm_inject_gp(ctxt->vcpu, 0);
-		else {
-			toggle_interruptibility(ctxt, X86_SHADOW_INT_STI);
-			ctxt->eflags |= X86_EFLAGS_IF;
-			c->dst.type = OP_NONE;	/* Disable writeback. */
-		}
+		toggle_interruptibility(ctxt, X86_SHADOW_INT_STI);
+		ctxt->eflags |= X86_EFLAGS_IF;
+		c->dst.type = OP_NONE;	/* Disable writeback. */
 		break;
 	case 0xfc: /* cld */
 		ctxt->eflags &= ~EFLG_DF;

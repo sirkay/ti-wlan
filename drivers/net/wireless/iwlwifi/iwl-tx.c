@@ -791,10 +791,8 @@ int iwl_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 		hdr->seq_ctrl |= cpu_to_le16(seq_number);
 		seq_number += 0x10;
 		/* aggregation is on for this <sta,tid> */
-		if (info->flags & IEEE80211_TX_CTL_AMPDU &&
-		    priv->stations[sta_id].tid[tid].agg.state == IWL_AGG_ON) {
+		if (info->flags & IEEE80211_TX_CTL_AMPDU)
 			txq_id = priv->stations[sta_id].tid[tid].agg.txq_id;
-		}
 	}
 
 	txq = &priv->txq[txq_id];
@@ -1088,21 +1086,18 @@ int iwl_tx_queue_reclaim(struct iwl_priv *priv, int txq_id, int index)
 	     q->read_ptr = iwl_queue_inc_wrap(q->read_ptr, q->n_bd)) {
 
 		tx_info = &txq->txb[txq->q.read_ptr];
-
-		if (WARN_ON_ONCE(tx_info->skb == NULL))
-			continue;
+		ieee80211_tx_status_irqsafe(priv->hw, tx_info->skb[0]);
 
 		hdr = (struct ieee80211_hdr *)tx_info->skb[0]->data;
-		if (ieee80211_is_data_qos(hdr->frame_control))
+		if (hdr && ieee80211_is_data_qos(hdr->frame_control))
 			nfreed++;
-
-		ieee80211_tx_status_irqsafe(priv->hw, tx_info->skb[0]);
 		tx_info->skb[0] = NULL;
 
 		if (priv->cfg->ops->lib->txq_inval_byte_cnt_tbl)
 			priv->cfg->ops->lib->txq_inval_byte_cnt_tbl(priv, txq);
 
 		priv->cfg->ops->lib->txq_free_tfd(priv, txq);
+		nfreed++;
 	}
 	return nfreed;
 }
@@ -1279,7 +1274,7 @@ int iwl_tx_agg_stop(struct iwl_priv *priv , const u8 *ra, u16 tid)
 {
 	int tx_fifo_id, txq_id, sta_id, ssn = -1;
 	struct iwl_tid_data *tid_data;
-	int write_ptr, read_ptr;
+	int ret, write_ptr, read_ptr;
 	unsigned long flags;
 
 	if (!ra) {
@@ -1331,16 +1326,12 @@ int iwl_tx_agg_stop(struct iwl_priv *priv , const u8 *ra, u16 tid)
 	priv->stations[sta_id].tid[tid].agg.state = IWL_AGG_OFF;
 
 	spin_lock_irqsave(&priv->lock, flags);
-	/*
-	 * the only reason this call can fail is queue number out of range,
-	 * which can happen if uCode is reloaded and all the station
-	 * information are lost. if it is outside the range, there is no need
-	 * to deactivate the uCode queue, just return "success" to allow
-	 *  mac80211 to clean up it own data.
-	 */
-	priv->cfg->ops->lib->txq_agg_disable(priv, txq_id, ssn,
+	ret = priv->cfg->ops->lib->txq_agg_disable(priv, txq_id, ssn,
 						   tx_fifo_id);
 	spin_unlock_irqrestore(&priv->lock, flags);
+
+	if (ret)
+		return ret;
 
 	ieee80211_stop_tx_ba_cb_irqsafe(priv->hw, ra, tid);
 
@@ -1483,11 +1474,6 @@ void iwl_rx_reply_compressed_ba(struct iwl_priv *priv,
 	sta_id = ba_resp->sta_id;
 	tid = ba_resp->tid;
 	agg = &priv->stations[sta_id].tid[tid].agg;
-	if (unlikely(agg->txq_id != scd_flow)) {
-		IWL_ERR(priv, "BA scd_flow %d does not match txq_id %d\n",
-			scd_flow, agg->txq_id);
-		return;
-	}
 
 	/* Find index just before block-ack window */
 	index = iwl_queue_dec_wrap(ba_resp_scd_ssn & 0xff, txq->q.n_bd);

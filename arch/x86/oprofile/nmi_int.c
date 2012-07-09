@@ -95,10 +95,7 @@ static void nmi_cpu_save_registers(struct op_msrs *msrs)
 static void nmi_cpu_start(void *dummy)
 {
 	struct op_msrs const *msrs = &__get_cpu_var(cpu_msrs);
-	if (!msrs->controls)
-		WARN_ON_ONCE(1);
-	else
-		model->start(msrs);
+	model->start(msrs);
 }
 
 static int nmi_start(void)
@@ -110,10 +107,7 @@ static int nmi_start(void)
 static void nmi_cpu_stop(void *dummy)
 {
 	struct op_msrs const *msrs = &__get_cpu_var(cpu_msrs);
-	if (!msrs->controls)
-		WARN_ON_ONCE(1);
-	else
-		model->stop(msrs);
+	model->stop(msrs);
 }
 
 static void nmi_stop(void)
@@ -518,13 +512,8 @@ static int __init init_sysfs(void)
 	int error;
 
 	error = sysdev_class_register(&oprofile_sysclass);
-	if (error)
-		return error;
-
-	error = sysdev_register(&device_oprofile);
-	if (error)
-		sysdev_class_unregister(&oprofile_sysclass);
-
+	if (!error)
+		error = sysdev_register(&device_oprofile);
 	return error;
 }
 
@@ -535,10 +524,8 @@ static void exit_sysfs(void)
 }
 
 #else
-
-static inline int  init_sysfs(void) { return 0; }
-static inline void exit_sysfs(void) { }
-
+#define init_sysfs() do { } while (0)
+#define exit_sysfs() do { } while (0)
 #endif /* CONFIG_PM */
 
 static int __init p4_init(char **cpu_type)
@@ -591,18 +578,6 @@ static int __init ppro_init(char **cpu_type)
 	if (force_arch_perfmon && cpu_has_arch_perfmon)
 		return 0;
 
-	/*
-	 * Documentation on identifying Intel processors by CPU family
-	 * and model can be found in the Intel Software Developer's
-	 * Manuals (SDM):
-	 *
-	 *  http://www.intel.com/products/processor/manuals/
-	 *
-	 * As of May 2010 the documentation for this was in the:
-	 * "Intel 64 and IA-32 Architectures Software Developer's
-	 * Manual Volume 3B: System Programming Guide", "Table B-1
-	 * CPUID Signature Values of DisplayFamily_DisplayModel".
-	 */
 	switch (cpu_model) {
 	case 0 ... 2:
 		*cpu_type = "i386/ppro";
@@ -621,19 +596,15 @@ static int __init ppro_init(char **cpu_type)
 	case 14:
 		*cpu_type = "i386/core";
 		break;
-	case 0x0f:
-	case 0x16:
-	case 0x17:
-	case 0x1d:
+	case 15: case 23:
 		*cpu_type = "i386/core_2";
 		break;
-	case 0x1a:
-	case 0x1e:
 	case 0x2e:
+	case 26:
 		spec = &op_arch_perfmon_spec;
 		*cpu_type = "i386/core_i7";
 		break;
-	case 0x1c:
+	case 28:
 		*cpu_type = "i386/atom";
 		break;
 	default:
@@ -654,8 +625,6 @@ int __init op_nmi_init(struct oprofile_operations *ops)
 	__u8 family = boot_cpu_data.x86;
 	char *cpu_type = NULL;
 	int ret = 0;
-
-	using_nmi = 0;
 
 	if (!cpu_has_apic)
 		return -ENODEV;
@@ -739,10 +708,7 @@ int __init op_nmi_init(struct oprofile_operations *ops)
 
 	mux_init(ops);
 
-	ret = init_sysfs();
-	if (ret)
-		return ret;
-
+	init_sysfs();
 	using_nmi = 1;
 	printk(KERN_INFO "oprofile: using NMI interrupt.\n");
 	return 0;

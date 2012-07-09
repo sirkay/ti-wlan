@@ -670,7 +670,6 @@ int kgsl_pwrctrl_sleep(struct kgsl_device *device)
 sleep:
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_OFF);
-
 	if (pwr->pwrlevels[0].gpu_freq > 0)
 		clk_set_rate(pwr->grp_clks[0],
 				pwr->pwrlevels[pwr->num_pwrlevels - 1].

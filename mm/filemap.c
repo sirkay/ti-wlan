@@ -34,7 +34,6 @@
 #include <linux/hardirq.h> /* for BUG_ON(!in_atomic()) only */
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h> /* for page_is_file_cache() */
-#include <linux/cleancache.h>
 #include "internal.h"
 
 /*
@@ -119,11 +118,6 @@
 void __remove_from_page_cache(struct page *page)
 {
 	struct address_space *mapping = page->mapping;
-
-	if (PageUptodate(page) && PageMappedToDisk(page))
-	      cleancache_put_page(page);
-	  else
-	      cleancache_flush_page(mapping, page);
 
 	radix_tree_delete(&mapping->page_tree, page->index);
 	page->mapping = NULL;
@@ -478,8 +472,8 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	if (ret == 0) {
 		if (page_is_file_cache(page))
 			lru_cache_add_file(page);
-//		else
-//			lru_cache_add_active_anon(page);
+		else
+			lru_cache_add_active_anon(page);
 	}
 	return ret;
 }
@@ -1036,9 +1030,6 @@ find_page:
 				goto page_not_up_to_date;
 			if (!trylock_page(page))
 				goto page_not_up_to_date;
-			/* Did it get truncated before we got the lock? */
-			if (!page->mapping)
-				goto page_not_up_to_date_locked;
 			if (!mapping->a_ops->is_partially_uptodate(page,
 								desc, offset))
 				goto page_not_up_to_date_locked;

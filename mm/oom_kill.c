@@ -365,7 +365,7 @@ static void __oom_kill_task(struct task_struct *p, int verbose)
 	 * all the memory it needs. That way it should be able to
 	 * exit() and clear out its resources quickly...
 	 */
-	set_oom_timeslice(p);
+	p->rt.time_slice = HZ;
 	set_tsk_thread_flag(p, TIF_MEMDIE);
 
 	force_sig(SIGKILL, p);
@@ -425,6 +425,8 @@ static int oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 	/* Try to kill a child first */
 	list_for_each_entry(c, &p->children, sibling) {
 		if (c->mm == p->mm)
+			continue;
+		if (mem && !task_in_mem_cgroup(c, mem))
 			continue;
 		if (!oom_kill_task(c))
 			return 0;
