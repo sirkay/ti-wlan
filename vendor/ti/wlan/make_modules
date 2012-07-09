@@ -1,0 +1,24 @@
+export ARCH=arm 
+export CROSS_COMPILE=/root/arm-2010.09/bin/arm-none-eabi-
+export KLIB=/root/ics/431/kernel
+export KLIB_BUILD=$KLIB
+cd compat-wireless-wl12xx/
+./scripts/driver-select wl12xx
+make
+make clean
+cp ./net/wireless/cfg80211.ko ../out/.
+cp ./net/mac80211/mac80211.ko ../out/.
+cp ./compat/compat.ko ../out/.
+cp ./compat/compat_firmware_class.ko ../out/.
+cp ./drivers/net/wireless/wl12xx/wl12xx.ko ../out/.
+cp ./drivers/net/wireless/wl12xx/wl12xx_sdio.ko ../out/.
+cp ./drivers/net/wireless/wl12xx/wl12xx_spi.ko ../out/.
+STRIP=/root/arm-2010.09/bin/arm-none-eabi-strip
+cd ../out
+$STRIP --strip-unneeded cfg80211.ko
+$STRIP --strip-unneeded mac80211.ko
+$STRIP --strip-unneeded compat.ko
+$STRIP --strip-unneeded compat_firmware_class.ko
+$STRIP --strip-unneeded wl12xx.ko
+$STRIP --strip-unneeded wl12xx_sdio.ko
+$STRIP --strip-unneeded wl12xx_spi.ko
