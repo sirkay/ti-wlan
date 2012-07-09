@@ -1,8 +1,0 @@
-patching file Makefile
-Hunk #1 FAILED at 1.
-1 out of 1 hunk FAILED -- saving rejects to file Makefile.rej
-patching file kernel/perf_event.c
-Reversed (or previously applied) patch detected!  Assume -R? [n] 
-Apply anyway? [n] 
-Skipping patch.
-1 out of 1 hunk ignored -- saving rejects to file kernel/perf_event.c.rej
