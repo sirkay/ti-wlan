@@ -1159,6 +1159,7 @@ static struct ieee80211_channel wl1251_channels[] = {
 	{ .hw_value = 11, .center_freq = 2462},
 	{ .hw_value = 12, .center_freq = 2467},
 	{ .hw_value = 13, .center_freq = 2472},
+	{ .hw_value = 14, .center_freq = 2484},
 };
 
 static int wl1251_op_conf_tx(struct ieee80211_hw *hw, u16 queue,
